@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 
 // Replace 'your-api-key-here' with your actual OpenRouter API key
-const OPENROUTER_API_KEY = "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"
+const OPENROUTER_API_KEY = "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"
 
 export async function POST(req: NextRequest) {
   try {
