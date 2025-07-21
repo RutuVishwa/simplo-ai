@@ -1,7 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// Replace 'your-api-key-here' with your actual OpenRouter API key
-const OPENROUTER_API_KEY = "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"
+// Get API key from environment variable
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+
+if (!OPENROUTER_API_KEY) {
+  throw new Error("OPENROUTER_API_KEY environment variable is not set")
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,32 +15,62 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Messages array is required" }, { status: 400 })
     }
 
+    // Check if any message contains an image
+    const hasImage = messages.some((msg: any) => msg.image)
+    
+    // Use vision model if there's an image, otherwise use the regular model
+    const model = hasImage ? "openai/gpt-4o-mini" : "deepseek/deepseek-r1-0528:free"
+
+    // Process messages to include images in the correct format
+    const processedMessages = messages.map((msg: any) => {
+      if (msg.image) {
+        // For vision models, we need to include the image in the content array
+        return {
+          role: msg.role,
+          content: [
+            {
+              type: "text",
+              text: msg.content || "Please describe this image."
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: msg.image
+              }
+            }
+          ]
+        }
+      } else {
+        return {
+          role: msg.role,
+          content: msg.content
+        }
+      }
+    })
+
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      // OpenRouter needs only these two headers for auth
       headers: {
-        // Always trim to avoid hidden whitespace issues
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "deepseek/deepseek-r1-0528:free",
+        model: model,
         messages: [
           {
             role: "system",
-            content:
-              "You are a helpful AI assistant. Always respond in English, regardless of the language used in the user's message. Be friendly, helpful, and conversational.",
+            content: hasImage 
+              ? "You are a helpful AI assistant with vision capabilities. When you see an image, describe what you observe in detail. Be friendly, helpful, and conversational. Always respond in English."
+              : "You are a helpful AI assistant. Always respond in English, regardless of the language used in the user's message. Be friendly, helpful, and conversational.",
           },
-          ...messages,
+          ...processedMessages,
         ],
-        // feel free to tweak
         temperature: 0.7,
         max_tokens: 1000,
       }),
     })
 
     if (!response.ok) {
-      // Try to parse the body; fall back to plain text
       let errorPayload: string | Record<string, unknown>
       try {
         errorPayload = await response.json()
